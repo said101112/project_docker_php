@@ -2,37 +2,59 @@ version: '3.8'
 
 services:
   db:
-    image: mysql:9.0
-    container_name: mysql_db1
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: ecole
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
+      # si tu n'as pas besoin de scripts init ou config personnalisée, tu peux commenter les lignes suivantes
+      #- ./mysql/init:/docker-entrypoint-initdb.d:ro
+      #- ./mysql/conf.d:/etc/mysql/conf.d:ro
     networks:
       - backend
+    healthcheck:
+      test: >
+        CMD-SHELL "mysqladmin ping -h localhost -uroot -p${MYSQL_ROOT_PASSWORD} || exit 1"
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   php:
-    image: php:8.2-apache
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+    image: local/php:8.2-apache-mysqli
     container_name: php_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./app:/var/www/html
     ports:
-      - "8085:80"
-    depends_on:
-      - db
+      - "8082:80"
     networks:
       - backend
 
   phpmyadmin:
-    image: phpmyadmin
+    image: phpmyadmin/phpmyadmin:latest
     container_name: pma
-    ports:
-      - "8086:80"
+    restart: unless-stopped
     environment:
-      PMA_HOST: db
+      PMA_HOST: mysql_db
+      PMA_USER: ${MYSQL_USER}
+      PMA_PASSWORD: ${MYSQL_PASSWORD}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
     networks:
       - backend
 
@@ -41,3 +63,4 @@ volumes:
 
 networks:
   backend:
+    driver: bridge
